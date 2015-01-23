@@ -1,6 +1,8 @@
 #!/usr/bin/python3 -i
 #-*- coding: UTF-8 -*-
 
+DEBUG = False
+
 import sys
 import os.path
 
@@ -37,6 +39,19 @@ payments_in_entry = []
 #List of individual services
 individual_services = []
 
+def warning(*text):
+	warningText="[WARNING] " + " ".join([str(i) for i in text])
+	print(warningText)
+	return warningText
+
+def debug(*text):
+	if DEBUG:
+		debugText="[DEBUG] " + " ".join([str(i) for i in text])
+		print(debugText)
+		return debugText
+	else:
+		return ""
+
 def yes_no_dialog(question):
 	pass
 	while True:
@@ -72,6 +87,8 @@ def write_to_file(filename):
 		audit_file.write(write_line(3,",".join([str(k) for k in participants_in_entry[i]])))
 		audit_file.write(write_line(4,",".join([str(k) for k in payments_in_entry[i]])))
 
+		# print('i ' + str(i))#debug
+		# if individual_services[i]:
 		for j in individual_services[i]:
 			audit_file.write(write_line(5,",".join([str(k) for k in j])))
 
@@ -104,7 +121,7 @@ def read_file(filename):
 	parse=audit_file.readlines()
 	parse=[i.strip("\n") for i in parse]
 
-	print(parse)#debug
+	debug("parse ", parse)#debug
 
 	initialize_globals()
 
@@ -135,12 +152,17 @@ def read_file(filename):
 			data_list+=[ [float(i) for i in data[1:].split(SEPARATOR)] ]
 
 	individual_services_cur = []
-	for line in parse:
+	for index, line in enumerate(parse):
+
+		debug("Parse loop", index, line)
+
 		if line[0] == "0":
 			apply_data(line,participants)
 
 		if line[0] == "1":
 			apply_data(line,entry_names)
+			if parse[index-1][0] != "5" and parse[index-1][0] != "0":
+				individual_services+=[[[]]]
 
 		if line[0] == "2":
 			apply_data(line,entry_dates)
@@ -155,10 +177,18 @@ def read_file(filename):
 			individual_services_cur2 = []
 			apply_list_data(line,individual_services_cur2)
 			individual_services_cur2=individual_services_cur2[0]
-			print("individual_services_cur2[1:]  " + str(individual_services_cur2[1:]))#debug
+			# print("individual_services_cur2[1:]  " + str(individual_services_cur2[1:]))#debug
 			individual_services_cur+=[ [individual_services_cur2[0]] + [float(i) for i in individual_services_cur2[1:]] ]
+			debug("5", "individual_services_cur",individual_services_cur , 'individual_services_cur2', individual_services_cur2)
+			try:
+				if parse[index+1][0] != "5":
+					individual_services+=[individual_services_cur]
+					individual_services_cur=[]
+			except IndexError:
+				warning("Reached end of file. No next element")
+				individual_services+=[individual_services_cur]
+				individual_services_cur=[]
 
-	individual_services+=[individual_services_cur]
 
 	audit_file.close()
 
@@ -232,10 +262,10 @@ def edit_file(filename):
 			2.Edit entry
 			3.Calculate entry results and show entry
 			4.Calculate overall results
-			5.???
+			5.Add repayment entry
 
 			0.Back to Main Menu
-		"""
+			"""
 			)
 		ans=input("What would you like to do? ")
 
@@ -245,7 +275,8 @@ def edit_file(filename):
 			write_to_file(filename)
 
 		elif ans=="2":
-			#Edit
+			#Edit an entry
+			print("Sorry, not implemented yet")
 			write_to_file(filename)
 
 		elif ans=="3":
@@ -256,6 +287,11 @@ def edit_file(filename):
 			#Show the overall results for the whole file
 			show_overall_results()
 
+		elif ans=="5":
+			#Add a repayment entry
+			add_new_entry(entry_type="repayment")
+			write_to_file(filename)
+
 		elif ans=="0":
 			break
 
@@ -265,12 +301,21 @@ def edit_file(filename):
 
 def calculate_overall_results():	
 	#Calculates the overall results for the whole file and returns them as list, corresponding to participants list
-	pass
+	result = [0.0]*len(participants)
+	for entry in range(len(entry_names)):
+		pass
+		for participant in participants_in_entry[entry]:
+			result[participant]+=calculate_entry_results(entry)[participant]
+
+	return result
+
 
 def show_overall_results():
 	#prints the overall results for a file
-	pass
+	print("Overall debt per participant:",
+		"\n".join([k[0]+":"+k[1] for k in zip(participants,[str(j) for j in calculate_overall_results()])]),
 
+		sep='\n',end="\n")
 
 def calculate_entry_results(index):
 	#Calculates and returns the results on debts for an entry with index
@@ -288,11 +333,15 @@ def calculate_entry_results(index):
 	#payment per participant without individual services
 	base_payment_per_participant = sum_payment_without_individuals / amount_of_participants
 
+	debug("index", index,"individual_services2", individual_services2)
+
 	final_debt=[]
 	for a in range(amount_of_participants):
 		#add individual services to each participant's payment
-		pass
-		sums_of_individuals_per_participant=sum([i[a] for i in individual_services2])
+		if(individual_services2[0]):
+			sums_of_individuals_per_participant=sum([i[a] for i in individual_services2])
+		else:
+			sums_of_individuals_per_participant=0
 		this_participant_to_pay= sums_of_individuals_per_participant + base_payment_per_participant
 		final_debt+=[this_participant_to_pay-payments_in_entry[index][a]]
 
@@ -312,7 +361,7 @@ def show_entry():
 	while True:
 
 		print(entry_list)
-		ans=input("Which entry do you need?: ")
+		ans=input("Which entry do you need? (Type e to exit): ")
 		if ans.lower()=='e':
 			break
 		try:
@@ -323,6 +372,13 @@ def show_entry():
 		# try:
 		if ans in range(len(entry_names)):
 			#show the entry
+
+			if  entry_names[ans] == "default":
+				show_ind_services ="Individual services:\n" + "\n\n".join([ j[0]+"\n"+ "\n".join([":".join(i) for i in zip(participants,[str(k) for k in j[1:]])]) for j in individual_services[ans]])
+				show_debt = "Total debt for this entry (negative means the person should receive money):" + "\n".join([":".join(j) for j in zip([participants[i] for i in participants_in_entry[ans]],[str(i) for i in calculate_entry_results(ans)])]),
+			else:
+				show_ind_services = ""
+				show_debt = ""
 			
 			print("Name: " + entry_names[ans],
 				"Date: " + entry_dates[ans],
@@ -330,59 +386,82 @@ def show_entry():
 				"",
 				"Payments per participant:", '\n'.join( [ participants[int(participants_in_entry[ans][i])] +": "+ str(payments_in_entry[ans][i])  for i in range(len(participants_in_entry[ans]))] ),
 				"",
-				"Individual services:", "\n\n".join([ j[0]+"\n"+ "\n".join([":".join(i) for i in zip(participants,[str(k) for k in j[1:]])]) for j in individual_services[ans]]) ,
+				show_ind_services,
 				"",
-				"Total debt for this entry (negative means the person should receive money):",
-				"\n".join([":".join(j) for j in zip([participants[i] for i in participants_in_entry[ans]],[str(i) for i in calculate_entry_results(ans)])]),
+				show_debt,
 				"",
 				sep='\n',end="\n")
 		else:
 			print("No such entry. Try again!")
 		# except:
 
-def add_new_entry():
+def add_new_entry(entry_type="default"):
 	#Add new entry
 
 	#Name this entry
-	entry_name=input("Please enter the name of this entry: ")
+	if entry_type=="default":
+		entry_name=input("Please enter the name of this entry: ")
+	elif entry_type=="repayment":
+		entry_name="Repayment"
 
 	#Date of the entry
 	entry_date=input("Please enter the date of this entry (preferrable format: YYYYMMDD): ")
 
 	#Define who participated in this entry
-	list_of_participants = ""
-
+	
+	list_of_participants = "\n"
 	for i in range(len(participants)):
-		list_of_participants += participants[i] + "\n"
-
-	s=input("Who participated in this entry? Write indicies of participants separated by comma or leave it blank if everybody participated:\n")
+		list_of_participants += str(i) + ")" + participants[i] + "\n"
+	if entry_type=="default":
+		print(list_of_participants)
+		s=input("Who participated in this entry? Write indicies of participants separated by comma or leave it blank if everybody participated:\n")
+	elif entry_type=="repayment":
+		#count everybody participating in repayment
+		s=None
 
 	if s:
 		participants_in_entry_cur = [int(i) for i in s.split(',')]
 	else:
 		participants_in_entry_cur = [i for i in range(len(participants))]
 
+	if entry_type=="repayment":
+		print(list_of_participants)
+		receiver=int(input("Who receives money in this repayment? Enter an index:"))
+		# participants_in_entry_cur.remove(int(receiver))
+
 	#manage how much each one paid
 	payments_in_entry_cur = []
-
 	for i in participants_in_entry_cur:
+
+		if entry_type=="repayment":
+			if i == receiver:
+				#leave a receiver's payment at zero for now
+				payments_in_entry_cur+=[0]
+				continue
+
 		payment=input("How much did " + participants[i] + " pay in this entry?: ")
 		if payment:
 			payments_in_entry_cur+=[float(payment)]
 		else:
 			payments_in_entry_cur+=[0]
 
-	#manage individual products or services
-	individual_services_cur = []
+	if entry_type=="repayment":
+		#make receiver's payment a negative sum of other participants' payments
+		pass
+		payments_in_entry_cur[receiver]=-sum(payments_in_entry_cur)
+		individual_services_cur = [[]]
 
-	while  True:
-		ans=yes_no_dialog("Would you like to add individual products? [y/n]:" )
-		if ans:
-			#add a new individual service
-			individual_services_cur += [add_individual_service(participants_in_entry_cur)]
-		else:
-			#no more individual services, continue
-			break
+	if entry_type=="default":
+		#manage individual products or services
+		individual_services_cur = []
+		while True:
+			ans=yes_no_dialog("Would you like to add individual products? [y/n]:" )
+			if ans:
+				#add a new individual service
+				individual_services_cur += [add_individual_service(participants_in_entry_cur)]
+			else:
+				#no more individual services, continue
+				break
 
 	#apply local variables to globals
 	global entry_names
