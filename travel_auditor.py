@@ -90,7 +90,8 @@ def write_to_file(filename):
 		# print('i ' + str(i))#debug
 		# if individual_services[i]:
 		for j in individual_services[i]:
-			audit_file.write(write_line(5,",".join([str(k) for k in j])))
+			if j:
+				audit_file.write(write_line(5,",".join([str(k) for k in j])))
 
 	audit_file.close()
 
@@ -187,8 +188,11 @@ def read_file(filename):
 			except IndexError:
 				warning("Reached end of file. No next element")
 				individual_services+=[individual_services_cur]
-				individual_services_cur=[]
+				# individual_services_cur=[] #not needed at the end of file, it's a local variable anyway
 
+	if len(individual_services) < len(entry_names):
+		#if we reached EOF, add [[]] to fill up to required length
+		individual_services+= [[[]]]*(len(entry_names)-len(individual_services))
 
 	audit_file.close()
 
@@ -373,12 +377,16 @@ def show_entry():
 		if ans in range(len(entry_names)):
 			#show the entry
 
-			if  entry_names[ans] == "default":
-				show_ind_services ="Individual services:\n" + "\n\n".join([ j[0]+"\n"+ "\n".join([":".join(i) for i in zip(participants,[str(k) for k in j[1:]])]) for j in individual_services[ans]])
-				show_debt = "Total debt for this entry (negative means the person should receive money):" + "\n".join([":".join(j) for j in zip([participants[i] for i in participants_in_entry[ans]],[str(i) for i in calculate_entry_results(ans)])]),
+			show_ind_services = ""
+			show_debt = ""
+
+			if  entry_names[ans] == "Repayment":
+				pass
 			else:
-				show_ind_services = ""
-				show_debt = ""
+				if individual_services[ans][0]:
+					show_ind_services ="Individual services:\n" + "\n\n".join([ j[0]+"\n"+ "\n".join([":".join(i) for i in zip(participants,[str(k) for k in j[1:]])]) for j in individual_services[ans]])
+				show_debt = "Total debt for this entry (negative means the person should receive money):" + "\n".join([":".join(j) for j in zip([participants[i] for i in participants_in_entry[ans]],[str(i) for i in calculate_entry_results(ans)])])
+
 			
 			print("Name: " + entry_names[ans],
 				"Date: " + entry_dates[ans],
